@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -16,6 +17,8 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
 import java.time.format.ResolverStyle;
+import java.util.ArrayDeque;
+import java.util.Deque;
 
 /** Fachada usada pelo EasyAccept para acessar as funções do sistema. */
 public class Facade {
@@ -24,6 +27,8 @@ public class Facade {
             .appendPattern("d/M/uuuu").toFormatter().withResolverStyle(ResolverStyle.STRICT);
 
     private SistemaFolha sistema;
+    private final Deque<SistemaFolha> desfazer = new ArrayDeque<>();
+    private final Deque<SistemaFolha> refazer = new ArrayDeque<>();
     private boolean encerrado;
 
     public Facade() {
@@ -32,6 +37,7 @@ public class Facade {
 
     public void zerarSistema() throws Exception {
         verificarAberto();
+        registrarAlteracao();
         sistema = new SistemaFolha();
     }
 
@@ -52,6 +58,7 @@ public class Facade {
         Empregado.Tipo tipoConvertido = tipo(tipo);
         if (tipoConvertido == Empregado.Tipo.COMISSIONADO) throw new Exception("Tipo nao aplicavel.");
         BigDecimal salarioConvertido = valorNaoNegativo(salario, "Salario");
+        registrarAlteracao();
         String id = sistema.novoId();
         sistema.empregados.put(id, new Empregado(id, nome, endereco, tipoConvertido, salarioConvertido, null));
         return id;
@@ -65,6 +72,7 @@ public class Facade {
         if (tipoConvertido != Empregado.Tipo.COMISSIONADO) throw new Exception("Tipo nao aplicavel.");
         BigDecimal salarioConvertido = valorNaoNegativo(salario, "Salario");
         BigDecimal comissaoConvertida = valorNaoNegativo(comissao, "Comissao");
+        registrarAlteracao();
         String id = sistema.novoId();
         sistema.empregados.put(id, new Empregado(id, nome, endereco, tipoConvertido, salarioConvertido, comissaoConvertida));
         return id;
@@ -73,6 +81,7 @@ public class Facade {
     public void removerEmpregado(String emp) throws Exception {
         verificarAberto();
         Empregado empregado = empregado(emp);
+        registrarAlteracao();
         sistema.empregados.remove(empregado.getId());
     }
 
@@ -125,31 +134,32 @@ public class Facade {
         Empregado e = empregado(emp);
         switch (atributo) {
             case "nome" -> {
-                validarTexto(valor, "Nome nao pode ser nulo."); e.setNome(valor);
+                validarTexto(valor, "Nome nao pode ser nulo."); registrarAlteracao(); e.setNome(valor);
             }
             case "endereco" -> {
-                validarTexto(valor, "Endereco nao pode ser nulo."); e.setEndereco(valor);
+                validarTexto(valor, "Endereco nao pode ser nulo."); registrarAlteracao(); e.setEndereco(valor);
             }
             case "tipo" -> {
                 Empregado.Tipo novoTipo = tipo(valor);
                 if (novoTipo == Empregado.Tipo.COMISSIONADO) throw new Exception("Comissao nao pode ser nula.");
-                e.setTipo(novoTipo); e.setComissao(null);
+                registrarAlteracao(); e.setTipo(novoTipo); e.setComissao(null);
             }
             case "salario" -> {
-                BigDecimal novoSalario = valorNaoNegativo(valor, "Salario"); e.setSalario(novoSalario);
+                BigDecimal novoSalario = valorNaoNegativo(valor, "Salario"); registrarAlteracao(); e.setSalario(novoSalario);
             }
             case "comissao" -> {
                 if (e.getTipo() != Empregado.Tipo.COMISSIONADO) throw new Exception("Empregado nao eh comissionado.");
-                BigDecimal novaComissao = valorNaoNegativo(valor, "Comissao"); e.setComissao(novaComissao);
+                BigDecimal novaComissao = valorNaoNegativo(valor, "Comissao"); registrarAlteracao(); e.setComissao(novaComissao);
             }
             case "metodoPagamento" -> {
                 if (!valor.equals("emMaos") && !valor.equals("correios")) throw new Exception("Metodo de pagamento invalido.");
+                registrarAlteracao();
                 if (valor.equals("emMaos")) e.pagarEmMaos(); else e.pagarPelosCorreios();
             }
             case "sindicalizado" -> {
                 if (!valor.equals("true") && !valor.equals("false")) throw new Exception("Valor deve ser true ou false.");
                 if (valor.equals("true")) throw new Exception("Identificacao do sindicato nao pode ser nula.");
-                e.dessindicalizar();
+                registrarAlteracao(); e.dessindicalizar();
             }
             default -> throw new Exception("Atributo nao existe.");
         }
@@ -163,25 +173,27 @@ public class Facade {
         Empregado.Tipo novoTipo = tipo(valor);
         BigDecimal numero = novoTipo == Empregado.Tipo.COMISSIONADO
                 ? valorNaoNegativo(adicional, "Comissao") : valorNaoNegativo(adicional, "Salario");
+        registrarAlteracao();
         e.setTipo(novoTipo);
         if (novoTipo == Empregado.Tipo.COMISSIONADO) e.setComissao(numero);
         else { e.setSalario(numero); e.setComissao(null); }
     }
 
-    /** Atualiza os dados do empregado. */
+    /** Atualiza os dados do empregado no sindicato. */
     public void alteraEmpregado(String emp, String atributo, String valor,
                                 String idSindicato, String taxaSindical) throws Exception {
         verificarAberto();
         Empregado e = empregado(emp);
         if (!atributo.equals("sindicalizado")) throw new Exception("Atributo nao existe.");
         if (!valor.equals("true") && !valor.equals("false")) throw new Exception("Valor deve ser true ou false.");
-        if (valor.equals("false")) { e.dessindicalizar(); return; }
+        if (valor.equals("false")) { registrarAlteracao(); e.dessindicalizar(); return; }
         validarTexto(idSindicato, "Identificacao do sindicato nao pode ser nula.");
         BigDecimal taxa = valorNaoNegativoFeminino(taxaSindical, "Taxa sindical");
         for (Empregado outro : sistema.empregados.values()) {
             if (outro != e && outro.isSindicalizado() && idSindicato.equals(outro.getIdSindicato()))
                 throw new Exception("Ha outro empregado com esta identificacao de sindicato");
         }
+        registrarAlteracao();
         e.sindicalizar(idSindicato, taxa);
     }
 
@@ -195,6 +207,7 @@ public class Facade {
         validarTexto(banco, "Banco nao pode ser nulo.");
         validarTexto(agencia, "Agencia nao pode ser nulo.");
         validarTexto(contaCorrente, "Conta corrente nao pode ser nulo.");
+        registrarAlteracao();
         e.pagarNoBanco(banco, agencia, contaCorrente);
     }
 
@@ -205,6 +218,7 @@ public class Facade {
         LocalDate dia = data(data, "Data invalida.");
         BigDecimal quantidade = decimal(horas, "Horas devem ser positivas.");
         if (quantidade.compareTo(BigDecimal.ZERO) <= 0) throw new Exception("Horas devem ser positivas.");
+        registrarAlteracao();
         e.getCartoes().add(new CartaoPonto(dia, quantidade));
     }
 
@@ -236,6 +250,7 @@ public class Facade {
         LocalDate dia = data(data, "Data invalida.");
         BigDecimal montante = decimal(valor, "Valor deve ser positivo.");
         if (montante.compareTo(BigDecimal.ZERO) <= 0) throw new Exception("Valor deve ser positivo.");
+        registrarAlteracao();
         e.getVendas().add(new Venda(dia, montante));
     }
 
@@ -259,6 +274,7 @@ public class Facade {
         LocalDate dia = data(data, "Data invalida.");
         BigDecimal montante = decimal(valor, "Valor deve ser positivo.");
         if (montante.compareTo(BigDecimal.ZERO) <= 0) throw new Exception("Valor deve ser positivo.");
+        registrarAlteracao();
         e.getTaxasServico().add(new TaxaServico(dia, montante));
     }
 
@@ -270,6 +286,39 @@ public class Facade {
         BigDecimal total = BigDecimal.ZERO;
         for (TaxaServico t : e.getTaxasServico()) if (noPeriodo(t.data, periodo)) total = total.add(t.valor);
         return Formatador.dinheiro(total);
+    }
+
+    public String totalFolha(String data) throws Exception {
+        verificarAberto();
+        return FolhaPagamento.total(sistema, data(data, "Data invalida."));
+    }
+
+    public void rodaFolha(String data, String saida) throws Exception {
+        verificarAberto();
+        LocalDate dia = data(data, "Data invalida.");
+        String conteudo = FolhaPagamento.relatorio(sistema, dia);
+        try { Files.writeString(Path.of(saida), conteudo, StandardCharsets.US_ASCII); }
+        catch (IOException e) { throw new Exception("Nao foi possivel escrever a folha."); }
+        registrarAlteracao();
+    }
+
+    public void undo() throws Exception {
+        verificarAberto();
+        if (desfazer.isEmpty()) throw new Exception("Nao ha comando a desfazer.");
+        refazer.push(sistema.copia());
+        sistema = desfazer.pop();
+    }
+
+    public void redo() throws Exception {
+        verificarAberto();
+        if (refazer.isEmpty()) throw new Exception("Nao ha comando a refazer.");
+        desfazer.push(sistema.copia());
+        sistema = refazer.pop();
+    }
+
+    private void registrarAlteracao() {
+        desfazer.push(sistema.copia());
+        refazer.clear();
     }
 
     private void verificarAberto() throws Exception {
