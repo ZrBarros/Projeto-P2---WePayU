@@ -1,18 +1,18 @@
 # WePayU
 
-Esta é a segunda versão do trabalho. Ela continua o que foi feito na primeira etapa e completa as histórias 1 a 8 do primeiro milestone. As histórias 9 e 10 não foram incluídas.
+Sistema de folha de pagamento desenvolvido em Java para a disciplina de Programação 2. O projeto implementa as histórias 1 a 8 do primeiro milestone.
 
-## O que foi acrescentado
+## Funcionalidades
 
-Nesta etapa foi implementado o cálculo da folha de pagamento. O sistema verifica quais empregados recebem na data informada e calcula salário, horas extras, comissões e descontos do sindicato.
+O sistema permite cadastrar, remover e alterar empregados horistas, assalariados e comissionados. Também é possível lançar cartões de ponto, resultados de vendas e taxas de serviço do sindicato.
 
-Os pagamentos podem ser feitos em mãos, por cheque enviado pelos correios ou por depósito bancário. Ao rodar a folha, o programa também gera o relatório no formato pedido pelos testes.
+Ao rodar a folha de pagamento, o programa verifica quais empregados recebem na data informada e calcula salário, horas extras, comissões e descontos. O pagamento pode ser feito em mãos, pelos correios ou por depósito bancário.
 
-Outra mudança desta versão foi a inclusão de `undo` e `redo`. Antes de uma operação que altera o sistema, uma cópia do estado é guardada. Com isso é possível desfazer uma operação e refazê-la depois.
+As operações das histórias 1 a 7 podem ser desfeitas e refeitas com `undo` e `redo`. Os dados também são salvos em arquivo quando o sistema é encerrado.
 
 ## Organização do código
 
-A `Facade` continua sendo o ponto de entrada usado pelo EasyAccept. `SistemaFolha` cuida do estado do programa e `Empregado` reúne os dados e lançamentos de cada funcionário. As regras de cálculo e a montagem do relatório ficaram em `FolhaPagamento`, separadas do restante do cadastro.
+A `Facade` é o ponto de entrada usado pelo EasyAccept. `SistemaFolha` cuida do estado do programa e `Empregado` reúne os dados e lançamentos de cada funcionário. As regras de cálculo e a montagem do relatório ficam em `FolhaPagamento`, separadas do restante do cadastro.
 
 Os valores monetários usam `BigDecimal` e as datas usam `LocalDate`. A persistência é feita no arquivo `wepayu-state.bin`.
 
@@ -27,3 +27,5 @@ java -cp build/classes:lib/easyaccept.jar Main
 ```
 
 Os testes de persistência devem ser executados logo depois do teste principal correspondente.
+
+As histórias 9 e 10, relacionadas às agendas personalizadas de pagamento, não fazem parte desta versão.
